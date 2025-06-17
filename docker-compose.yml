@@ -1,34 +1,48 @@
-version: '3.8'
-
 services:
   app:
-    build:
-      dockerfile: Dockerfile
-      context: .
+    build: .
     ports:
       - "8080:8080"
     env_file:
-      - cmd/auction/.env
-    command: sh -c "/auction"
+      - .env
+    environment:
+      - TZ=America/Sao_Paulo
+    depends_on:
+      mongodb:
+        condition: service_healthy
     networks:
-      - localNetwork
+      - auction-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
 
   mongodb:
-    image: mongo:latest
+    image: mongo:6.0
     container_name: mongodb
     ports:
       - "27017:27017"
-    env_file:
-      - cmd/auction/.env
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD}
+      TZ: America/Sao_Paulo
     volumes:
       - mongo-data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
     networks:
-      - localNetwork
+      - auction-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh -u $$MONGO_INITDB_ROOT_USERNAME -p $$MONGO_INITDB_ROOT_PASSWORD --quiet
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  auction-network:
+    driver: bridge
 
 volumes:
   mongo-data:
     driver: local
-
-networks:
-  localNetwork:
-    driver: bridge
