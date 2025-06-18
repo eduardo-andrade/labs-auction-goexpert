@@ -3,78 +3,79 @@ package auction_controller
 import (
 	"context"
 	"fullcycle-auction_go/configuration/rest_err"
-	"fullcycle-auction_go/internal/usecase/auction_usecase"
-	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
+	"fullcycle-auction_go/internal/entity/auction_entity"
 	"net/http"
 	"strconv"
+
+	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
-func (u *AuctionController) FindAuctionById(c *gin.Context) {
-	auctionId := c.Param("auctionId")
-
-	if err := uuid.Validate(auctionId); err != nil {
-		errRest := rest_err.NewBadRequestError("Invalid fields", rest_err.Causes{
-			Field:   "auctionId",
-			Message: "Invalid UUID value",
-		})
-
-		c.JSON(errRest.Code, errRest)
-		return
-	}
-
-	auctionData, err := u.auctionUseCase.FindAuctionById(context.Background(), auctionId)
-	if err != nil {
-		errRest := rest_err.ConvertError(err)
-		c.JSON(errRest.Code, errRest)
-		return
-	}
-
-	c.JSON(http.StatusOK, auctionData)
-}
-
 func (u *AuctionController) FindAuctions(c *gin.Context) {
-	status := c.Query("status")
+	statusStr := c.Query("status")
 	category := c.Query("category")
 	productName := c.Query("productName")
 
-	statusNumber, errConv := strconv.Atoi(status)
-	if errConv != nil {
-		errRest := rest_err.NewBadRequestError("Error trying to validate auction status param")
-		c.JSON(errRest.Code, errRest)
-		return
+	var status auction_entity.AuctionStatus = auction_entity.Active
+	if statusStr != "" {
+		statusNumber, errConv := strconv.Atoi(statusStr)
+		if errConv != nil {
+			restErr := rest_err.NewBadRequestError("Invalid status value")
+			c.JSON(restErr.Code, restErr)
+			return
+		}
+		status = auction_entity.AuctionStatus(statusNumber)
 	}
 
-	auctions, err := u.auctionUseCase.FindAuctions(context.Background(),
-		auction_usecase.AuctionStatus(statusNumber), category, productName)
+	auctions, err := u.findUseCase.FindAuctions(
+		context.Background(),
+		status,
+		category,
+		productName,
+	)
 	if err != nil {
-		errRest := rest_err.ConvertError(err)
-		c.JSON(errRest.Code, errRest)
+		restErr := rest_err.ConvertError(err)
+		c.JSON(restErr.Code, restErr)
 		return
 	}
 
 	c.JSON(http.StatusOK, auctions)
 }
 
-func (u *AuctionController) FindWinningBidByAuctionId(c *gin.Context) {
+func (u *AuctionController) FindAuctionById(c *gin.Context) {
 	auctionId := c.Param("auctionId")
 
 	if err := uuid.Validate(auctionId); err != nil {
-		errRest := rest_err.NewBadRequestError("Invalid fields", rest_err.Causes{
-			Field:   "auctionId",
-			Message: "Invalid UUID value",
-		})
-
-		c.JSON(errRest.Code, errRest)
+		restErr := rest_err.NewBadRequestError("Invalid auction ID")
+		c.JSON(restErr.Code, restErr)
 		return
 	}
 
-	auctionData, err := u.auctionUseCase.FindWinningBidByAuctionId(context.Background(), auctionId)
+	auctionData, err := u.findUseCase.FindAuctionById(context.Background(), auctionId)
 	if err != nil {
-		errRest := rest_err.ConvertError(err)
-		c.JSON(errRest.Code, errRest)
+		restErr := rest_err.ConvertError(err)
+		c.JSON(restErr.Code, restErr)
 		return
 	}
 
 	c.JSON(http.StatusOK, auctionData)
+}
+
+func (u *AuctionController) FindWinningBidByAuctionId(c *gin.Context) {
+	auctionId := c.Param("auctionId")
+
+	if err := uuid.Validate(auctionId); err != nil {
+		restErr := rest_err.NewBadRequestError("Invalid auction ID")
+		c.JSON(restErr.Code, restErr)
+		return
+	}
+
+	bid, err := u.findUseCase.FindWinningBidByAuctionId(context.Background(), auctionId)
+	if err != nil {
+		restErr := rest_err.ConvertError(err)
+		c.JSON(restErr.Code, restErr)
+		return
+	}
+
+	c.JSON(http.StatusOK, bid)
 }

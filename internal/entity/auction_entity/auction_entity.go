@@ -3,8 +3,9 @@ package auction_entity
 import (
 	"context"
 	"fullcycle-auction_go/internal/internal_error"
-	"github.com/google/uuid"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func CreateAuction(
@@ -28,12 +29,20 @@ func CreateAuction(
 }
 
 func (au *Auction) Validate() *internal_error.InternalError {
-	if len(au.ProductName) <= 1 ||
-		len(au.Category) <= 2 ||
-		len(au.Description) <= 10 && (au.Condition != New &&
-			au.Condition != Refurbished &&
-			au.Condition != Used) {
-		return internal_error.NewBadRequestError("invalid auction object")
+	if len(au.ProductName) <= 1 {
+		return internal_error.NewBadRequestError("ProductName too short")
+	}
+
+	if len(au.Category) <= 2 {
+		return internal_error.NewBadRequestError("Category too short")
+	}
+
+	if len(au.Description) <= 10 {
+		return internal_error.NewBadRequestError("Description too short")
+	}
+
+	if au.Condition != New && au.Condition != Used && au.Condition != Refurbished {
+		return internal_error.NewBadRequestError("Invalid Condition")
 	}
 
 	return nil

@@ -30,6 +30,11 @@ type AuctionRepository struct {
 	closeMutex sync.Mutex
 }
 
+// FindAuctionById implements auction_entity.AuctionRepositoryInterface.
+func (ar *AuctionRepository) FindAuctionById(ctx context.Context, id string) (*auction_entity.Auction, *internal_error.InternalError) {
+	panic("unimplemented")
+}
+
 func NewAuctionRepository(database *mongo.Database) *AuctionRepository {
 	repo := &AuctionRepository{
 		Collection: database.Collection("auctions"),
@@ -43,6 +48,10 @@ func NewAuctionRepository(database *mongo.Database) *AuctionRepository {
 func (ar *AuctionRepository) CreateAuction(
 	ctx context.Context,
 	auctionEntity *auction_entity.Auction) *internal_error.InternalError {
+
+	logger.Info("Creating auction in DB",
+		zap.String("id", auctionEntity.Id),
+		zap.String("product", auctionEntity.ProductName))
 
 	duration := getAuctionDuration()
 	endTime := time.Now().Add(duration).Unix()
@@ -58,12 +67,15 @@ func (ar *AuctionRepository) CreateAuction(
 		EndTime:     endTime,
 	}
 
-	_, err := ar.Collection.InsertOne(ctx, auctionEntityMongo)
+	result, err := ar.Collection.InsertOne(ctx, auctionEntityMongo)
 	if err != nil {
-		logger.Error("Error trying to insert auction", err)
-		return internal_error.NewInternalServerError("Error trying to insert auction")
+		logger.Error("Error inserting auction",
+			err,
+			zap.Any("auction", auctionEntityMongo))
+		return internal_error.NewInternalServerError("Error inserting auction")
 	}
-
+	logger.Info("Auction created successfully",
+		zap.Any("inserted_id", result.InsertedID))
 	return nil
 }
 
@@ -89,7 +101,7 @@ func (ar *AuctionRepository) StartAuctionCloser(ctx context.Context) {
 				return
 			default:
 				ar.CloseExpiredAuctions(ctx)
-				time.Sleep(10 * time.Second) // Verifica a cada 10 segundos
+				time.Sleep(10 * time.Second)
 			}
 		}
 	}()
@@ -100,31 +112,20 @@ func (ar *AuctionRepository) CloseExpiredAuctions(ctx context.Context) {
 	defer ar.closeMutex.Unlock()
 
 	now := time.Now().Unix()
-	cursor, err := ar.Collection.Find(ctx, bson.M{
-		"status":   auction_entity.Active,
-		"end_time": bson.M{"$lte": now},
-	})
+
+	_, err := ar.Collection.UpdateMany(
+		ctx,
+		bson.M{
+			"status":   auction_entity.Active,
+			"end_time": bson.M{"$lte": now},
+		},
+		bson.M{"$set": bson.M{"status": auction_entity.Completed}},
+	)
+
 	if err != nil {
-		logger.Error("Error finding expired auctions", err)
+		logger.Error("Error closing auctions", err)
 		return
 	}
-	defer cursor.Close(ctx)
 
-	for cursor.Next(ctx) {
-		var auction AuctionEntityMongo
-		if err := cursor.Decode(&auction); err != nil {
-			logger.Error("Error decoding auction", err)
-			continue
-		}
-
-		_, err := ar.Collection.UpdateByID(ctx, auction.Id, bson.M{
-			"$set": bson.M{"status": auction_entity.Completed},
-		})
-
-		if err != nil {
-			logger.Error("Error closing auction", err, zap.String("auction_id", auction.Id))
-		} else {
-			logger.Info("Closed auction", zap.String("auction_id", auction.Id))
-		}
-	}
+	logger.Info("Closed expired auctions")
 }

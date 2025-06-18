@@ -56,11 +56,10 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	router.Run(":8080")
+	log.Println("Server starting on :8080")
 	if err := router.Run(":8080"); err != nil {
 		log.Fatal("Failed to start server: ", err)
 	}
-	log.Println("Server starting on :8080")
 }
 
 func initDependencies(database *mongo.Database) (
@@ -72,11 +71,20 @@ func initDependencies(database *mongo.Database) (
 	bidRepository := bid.NewBidRepository(database, auctionRepository)
 	userRepository := user.NewUserRepository(database)
 
+	// Criação separada dos use cases
+	auctionCreateUseCase := auction_usecase.NewAuctionUseCase(auctionRepository, bidRepository)
+	auctionFindUseCase := auction_usecase.NewAuctionFindUseCase(auctionRepository, bidRepository)
+
 	userController = user_controller.NewUserController(
 		user_usecase.NewUserUseCase(userRepository))
+
 	auctionController = auction_controller.NewAuctionController(
-		auction_usecase.NewAuctionUseCase(auctionRepository, bidRepository))
-	bidController = bid_controller.NewBidController(bid_usecase.NewBidUseCase(bidRepository))
+		auctionCreateUseCase,
+		auctionFindUseCase,
+	)
+
+	bidController = bid_controller.NewBidController(
+		bid_usecase.NewBidUseCase(bidRepository))
 
 	return
 }
