@@ -45,12 +45,11 @@ test_endpoint "POST" "/auction" "Criar leilão" "$AUCTION_PAYLOAD"
 
 # Extrair o ID do leilão da resposta se criado com sucesso
 if [[ "$response" == *"201 Created"* ]]; then
-    AUCTION_ID=$(echo "$response" | grep -Eo '"id":"[^"]+"' | cut -d'"' -f4)
+    AUCTION_ID=$(echo "$response" | grep -Eo '"Id":"[^"]+"' | cut -d'"' -f4)
     echo "Auction ID: $AUCTION_ID"
     echo ""
 else
     echo "!!! ERRO: Não foi possível criar o leilão"
-    echo "!!! Verifique se a rota POST /auction está implementada"
     exit 1
 fi
 

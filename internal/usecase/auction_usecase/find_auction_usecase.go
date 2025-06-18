@@ -2,7 +2,6 @@ package auction_usecase
 
 import (
 	"context"
-	"fullcycle-auction_go/configuration/logger"
 	"fullcycle-auction_go/internal/entity/auction_entity"
 	"fullcycle-auction_go/internal/entity/bid_entity"
 	"fullcycle-auction_go/internal/internal_error"
@@ -91,6 +90,16 @@ func (au *AuctionFindUseCase) FindWinningBidByAuctionId(
 		return nil, err
 	}
 
+	// Verificar se o leilão está fechado
+	if auction.Status != auction_entity.Completed {
+		return nil, internal_error.NewBadRequestError("Auction is not completed yet")
+	}
+
+	bidWinning, err := au.bidRepositoryInterface.FindWinningBidByAuctionId(ctx, auction.Id)
+	if err != nil {
+		return nil, err
+	}
+
 	auctionOutputDTO := AuctionOutputDTO{
 		Id:          auction.Id,
 		ProductName: auction.ProductName,
@@ -101,13 +110,9 @@ func (au *AuctionFindUseCase) FindWinningBidByAuctionId(
 		Timestamp:   auction.Timestamp,
 	}
 
-	bidWinning, err := au.bidRepositoryInterface.FindWinningBidByAuctionId(ctx, auction.Id)
-	if err != nil {
-		logger.Error("", err)
-		return &WinningInfoOutputDTO{
-			Auction: auctionOutputDTO,
-			Bid:     nil,
-		}, nil
+	// Se não houver lance vencedor, retornar erro
+	if bidWinning == nil {
+		return nil, internal_error.NewNotFoundError("No winning bid found for this auction")
 	}
 
 	bidOutputDTO := &BidOutputDTO{

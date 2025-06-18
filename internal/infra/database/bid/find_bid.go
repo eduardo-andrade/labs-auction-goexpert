@@ -2,47 +2,55 @@ package bid
 
 import (
 	"context"
-	"fmt"
 	"fullcycle-auction_go/configuration/logger"
 	"fullcycle-auction_go/internal/entity/bid_entity"
 	"fullcycle-auction_go/internal/internal_error"
+	"time"
+
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
-	"time"
 )
 
-func (bd *BidRepository) FindBidByAuctionId(
+func (br *BidRepository) FindBidByAuctionId(
 	ctx context.Context, auctionId string) ([]bid_entity.Bid, *internal_error.InternalError) {
-	filter := bson.M{"auctionId": auctionId}
 
-	cursor, err := bd.Collection.Find(ctx, filter)
+	// Validar auctionId
+	if _, err := uuid.Parse(auctionId); err != nil {
+		return nil, internal_error.NewBadRequestError("Invalid auction ID format")
+	}
+
+	filter := bson.M{"auction_id": auctionId}
+	cursor, err := br.Collection.Find(ctx, filter)
 	if err != nil {
-		logger.Error(
-			fmt.Sprintf("Error trying to find bids by auctionId %s", auctionId), err)
-		return nil, internal_error.NewInternalServerError(
-			fmt.Sprintf("Error trying to find bids by auctionId %s", auctionId))
+		logger.Error("Error finding bids", err)
+		return nil, internal_error.NewInternalServerError("Error finding bids")
 	}
+	defer cursor.Close(ctx)
 
-	var bidEntitiesMongo []BidEntityMongo
-	if err := cursor.All(ctx, &bidEntitiesMongo); err != nil {
-		logger.Error(
-			fmt.Sprintf("Error trying to find bids by auctionId %s", auctionId), err)
-		return nil, internal_error.NewInternalServerError(
-			fmt.Sprintf("Error trying to find bids by auctionId %s", auctionId))
-	}
+	var bids []bid_entity.Bid
+	for cursor.Next(ctx) {
+		var bidMongo BidEntityMongo
+		if err := cursor.Decode(&bidMongo); err != nil {
+			logger.Error("Error decoding bid", err)
+			continue
+		}
 
-	var bidEntities []bid_entity.Bid
-	for _, bidEntityMongo := range bidEntitiesMongo {
-		bidEntities = append(bidEntities, bid_entity.Bid{
-			Id:        bidEntityMongo.Id,
-			UserId:    bidEntityMongo.UserId,
-			AuctionId: bidEntityMongo.AuctionId,
-			Amount:    bidEntityMongo.Amount,
-			Timestamp: time.Unix(bidEntityMongo.Timestamp, 0),
+		bids = append(bids, bid_entity.Bid{
+			Id:        bidMongo.Id,
+			UserId:    bidMongo.UserId,
+			AuctionId: bidMongo.AuctionId,
+			Amount:    bidMongo.Amount,
+			Timestamp: time.Unix(bidMongo.Timestamp, 0),
 		})
 	}
 
-	return bidEntities, nil
+	// Se não encontrar lances, retornar array vazio
+	if len(bids) == 0 {
+		return []bid_entity.Bid{}, nil
+	}
+
+	return bids, nil
 }
 
 func (bd *BidRepository) FindWinningBidByAuctionId(

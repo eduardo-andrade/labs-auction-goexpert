@@ -54,6 +54,11 @@ func (u *AuctionController) FindAuctionById(c *gin.Context) {
 	auctionData, err := u.findUseCase.FindAuctionById(context.Background(), auctionId)
 	if err != nil {
 		restErr := rest_err.ConvertError(err)
+		if restErr.Code == http.StatusNotFound {
+			c.JSON(restErr.Code, gin.H{"error": "Auction not found"})
+			return
+		}
+
 		c.JSON(restErr.Code, restErr)
 		return
 	}

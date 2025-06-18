@@ -2,6 +2,7 @@ package auction
 
 import (
 	"context"
+	"fmt"
 	"fullcycle-auction_go/configuration/logger"
 	"fullcycle-auction_go/internal/entity/auction_entity"
 	"fullcycle-auction_go/internal/internal_error"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.uber.org/zap"
@@ -30,9 +32,34 @@ type AuctionRepository struct {
 	closeMutex sync.Mutex
 }
 
-// FindAuctionById implements auction_entity.AuctionRepositoryInterface.
-func (ar *AuctionRepository) FindAuctionById(ctx context.Context, id string) (*auction_entity.Auction, *internal_error.InternalError) {
-	panic("unimplemented")
+func (ar *AuctionRepository) FindAuctionById(
+	ctx context.Context, id string) (*auction_entity.Auction, *internal_error.InternalError) {
+
+	// Adicionar validação de ID
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, internal_error.NewBadRequestError("Invalid auction ID format")
+	}
+
+	filter := bson.M{"_id": id}
+
+	var auctionEntityMongo AuctionEntityMongo
+	if err := ar.Collection.FindOne(ctx, filter).Decode(&auctionEntityMongo); err != nil {
+		if err == mongo.ErrNoDocuments {
+			return nil, internal_error.NewNotFoundError("Auction not found")
+		}
+		logger.Error(fmt.Sprintf("Error trying to find auction by id = %s", id), err)
+		return nil, internal_error.NewInternalServerError("Error trying to find auction by id")
+	}
+
+	return &auction_entity.Auction{
+		Id:          auctionEntityMongo.Id,
+		ProductName: auctionEntityMongo.ProductName,
+		Category:    auctionEntityMongo.Category,
+		Description: auctionEntityMongo.Description,
+		Condition:   auctionEntityMongo.Condition,
+		Status:      auctionEntityMongo.Status,
+		Timestamp:   time.Unix(auctionEntityMongo.Timestamp, 0),
+	}, nil
 }
 
 func NewAuctionRepository(database *mongo.Database) *AuctionRepository {
@@ -112,20 +139,21 @@ func (ar *AuctionRepository) CloseExpiredAuctions(ctx context.Context) {
 	defer ar.closeMutex.Unlock()
 
 	now := time.Now().Unix()
+	filter := bson.M{
+		"status":   auction_entity.Active,
+		"end_time": bson.M{"$lte": now},
+	}
 
-	_, err := ar.Collection.UpdateMany(
-		ctx,
-		bson.M{
-			"status":   auction_entity.Active,
-			"end_time": bson.M{"$lte": now},
-		},
-		bson.M{"$set": bson.M{"status": auction_entity.Completed}},
-	)
+	update := bson.M{"$set": bson.M{"status": auction_entity.Completed}}
 
+	// Atualização em massa
+	result, err := ar.Collection.UpdateMany(ctx, filter, update)
 	if err != nil {
 		logger.Error("Error closing auctions", err)
 		return
 	}
 
-	logger.Info("Closed expired auctions")
+	if result.ModifiedCount > 0 {
+		logger.Info("Closed auctions", zap.Int64("count", result.ModifiedCount))
+	}
 }
