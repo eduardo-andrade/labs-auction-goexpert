@@ -83,8 +83,8 @@ test_endpoint "GET" "/auction?status=0" "Listar leilões ativos"
 
 # 10. Aguardar fechamento automático
 echo "=== Aguardando fechamento do leilão ==="
-echo "Aguardando 35 segundos para fechamento automático..."
-sleep 35
+echo "Aguardando 45 segundos para fechamento automático..."
+sleep 45
 echo ""
 
 # 11. Buscar vencedor do leilão

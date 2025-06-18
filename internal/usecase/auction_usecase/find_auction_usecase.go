@@ -90,27 +90,15 @@ func (au *AuctionFindUseCase) FindWinningBidByAuctionId(
 		return nil, err
 	}
 
-	// Verificar se o leilão está fechado
 	if auction.Status != auction_entity.Completed {
 		return nil, internal_error.NewBadRequestError("Auction is not completed yet")
 	}
 
-	bidWinning, err := au.bidRepositoryInterface.FindWinningBidByAuctionId(ctx, auction.Id)
+	bidWinning, err := au.bidRepositoryInterface.FindWinningBidByAuctionId(ctx, auctionId)
 	if err != nil {
 		return nil, err
 	}
 
-	auctionOutputDTO := AuctionOutputDTO{
-		Id:          auction.Id,
-		ProductName: auction.ProductName,
-		Category:    auction.Category,
-		Description: auction.Description,
-		Condition:   auction.Condition,
-		Status:      auction.Status,
-		Timestamp:   auction.Timestamp,
-	}
-
-	// Se não houver lance vencedor, retornar erro
 	if bidWinning == nil {
 		return nil, internal_error.NewNotFoundError("No winning bid found for this auction")
 	}
@@ -123,8 +111,18 @@ func (au *AuctionFindUseCase) FindWinningBidByAuctionId(
 		Timestamp: bidWinning.Timestamp,
 	}
 
+	auctionOutputDTO := &AuctionOutputDTO{
+		Id:          auction.Id,
+		ProductName: auction.ProductName,
+		Category:    auction.Category,
+		Description: auction.Description,
+		Condition:   auction.Condition,
+		Status:      auction.Status,
+		Timestamp:   auction.Timestamp,
+	}
+
 	return &WinningInfoOutputDTO{
-		Auction: auctionOutputDTO,
+		Auction: *auctionOutputDTO,
 		Bid:     bidOutputDTO,
 	}, nil
 }

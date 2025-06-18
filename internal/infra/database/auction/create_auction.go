@@ -76,10 +76,6 @@ func (ar *AuctionRepository) CreateAuction(
 	ctx context.Context,
 	auctionEntity *auction_entity.Auction) *internal_error.InternalError {
 
-	logger.Info("Creating auction in DB",
-		zap.String("id", auctionEntity.Id),
-		zap.String("product", auctionEntity.ProductName))
-
 	duration := getAuctionDuration()
 	endTime := time.Now().Add(duration).Unix()
 
@@ -91,18 +87,20 @@ func (ar *AuctionRepository) CreateAuction(
 		Condition:   auctionEntity.Condition,
 		Status:      auctionEntity.Status,
 		Timestamp:   auctionEntity.Timestamp.Unix(),
-		EndTime:     endTime,
+		EndTime:     endTime, // Garantir que está sendo salvo
 	}
 
-	result, err := ar.Collection.InsertOne(ctx, auctionEntityMongo)
+	_, err := ar.Collection.InsertOne(ctx, auctionEntityMongo)
 	if err != nil {
-		logger.Error("Error inserting auction",
-			err,
-			zap.Any("auction", auctionEntityMongo))
+		logger.Error("Error inserting auction", err)
 		return internal_error.NewInternalServerError("Error inserting auction")
 	}
-	logger.Info("Auction created successfully",
-		zap.Any("inserted_id", result.InsertedID))
+
+	logger.Info("Auction created",
+		zap.String("id", auctionEntity.Id),
+		zap.Int64("end_time", endTime),
+		zap.String("duration", duration.String()))
+
 	return nil
 }
 
@@ -121,17 +119,19 @@ func getAuctionDuration() time.Duration {
 }
 
 func (ar *AuctionRepository) StartAuctionCloser(ctx context.Context) {
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-				ar.CloseExpiredAuctions(ctx)
-				time.Sleep(10 * time.Second)
-			}
+	ar.CloseExpiredAuctions(ctx)
+
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			ar.CloseExpiredAuctions(ctx)
 		}
-	}()
+	}
 }
 
 func (ar *AuctionRepository) CloseExpiredAuctions(ctx context.Context) {
@@ -139,6 +139,8 @@ func (ar *AuctionRepository) CloseExpiredAuctions(ctx context.Context) {
 	defer ar.closeMutex.Unlock()
 
 	now := time.Now().Unix()
+	logger.Info("Checking for expired auctions", zap.Int64("now", now))
+
 	filter := bson.M{
 		"status":   auction_entity.Active,
 		"end_time": bson.M{"$lte": now},
@@ -146,7 +148,6 @@ func (ar *AuctionRepository) CloseExpiredAuctions(ctx context.Context) {
 
 	update := bson.M{"$set": bson.M{"status": auction_entity.Completed}}
 
-	// Atualização em massa
 	result, err := ar.Collection.UpdateMany(ctx, filter, update)
 	if err != nil {
 		logger.Error("Error closing auctions", err)
@@ -154,6 +155,10 @@ func (ar *AuctionRepository) CloseExpiredAuctions(ctx context.Context) {
 	}
 
 	if result.ModifiedCount > 0 {
-		logger.Info("Closed auctions", zap.Int64("count", result.ModifiedCount))
+		logger.Info("Closed auctions",
+			zap.Int64("count", result.ModifiedCount),
+			zap.Any("filter", filter))
+	} else {
+		logger.Info("No auctions to close")
 	}
 }

@@ -16,6 +16,8 @@ func (ar *AuctionRepository) FindAuctions(
 	status auction_entity.AuctionStatus,
 	category, productName string) ([]auction_entity.Auction, *internal_error.InternalError) {
 
+	result := []auction_entity.Auction{}
+
 	filter := bson.M{}
 
 	if status != 0 {
@@ -27,34 +29,33 @@ func (ar *AuctionRepository) FindAuctions(
 	}
 
 	if productName != "" {
-		filter["product_name"] = primitive.Regex{Pattern: productName, Options: "i"} // Corrigido para "product_name"
+		filter["product_name"] = primitive.Regex{Pattern: productName, Options: "i"}
 	}
 
 	cursor, err := ar.Collection.Find(ctx, filter)
 	if err != nil {
 		logger.Error("Error finding auctions", err)
-		return nil, internal_error.NewInternalServerError("Error finding auctions")
+		return result, nil // Retornar array vazio
 	}
 	defer cursor.Close(ctx)
 
 	var auctionsMongo []AuctionEntityMongo
 	if err := cursor.All(ctx, &auctionsMongo); err != nil {
 		logger.Error("Error decoding auctions", err)
-		return nil, internal_error.NewInternalServerError("Error decoding auctions")
+		return result, nil // Retornar array vazio
 	}
 
-	var auctionsEntity []auction_entity.Auction
-	for _, auction := range auctionsMongo {
-		auctionsEntity = append(auctionsEntity, auction_entity.Auction{
-			Id:          auction.Id,
-			ProductName: auction.ProductName,
-			Category:    auction.Category,
-			Status:      auction.Status,
-			Description: auction.Description,
-			Condition:   auction.Condition,
-			Timestamp:   time.Unix(auction.Timestamp, 0),
+	for _, value := range auctionsMongo {
+		result = append(result, auction_entity.Auction{
+			Id:          value.Id,
+			ProductName: value.ProductName,
+			Category:    value.Category,
+			Description: value.Description,
+			Condition:   value.Condition,
+			Status:      value.Status,
+			Timestamp:   time.Unix(value.Timestamp, 0),
 		})
 	}
 
-	return auctionsEntity, nil
+	return result, nil
 }

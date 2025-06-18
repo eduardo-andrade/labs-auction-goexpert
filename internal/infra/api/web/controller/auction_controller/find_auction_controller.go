@@ -18,13 +18,12 @@ func (u *AuctionController) FindAuctions(c *gin.Context) {
 
 	var status auction_entity.AuctionStatus = auction_entity.Active
 	if statusStr != "" {
-		statusNumber, errConv := strconv.Atoi(statusStr)
-		if errConv != nil {
-			restErr := rest_err.NewBadRequestError("Invalid status value")
-			c.JSON(restErr.Code, restErr)
+		statusInt, err := strconv.Atoi(statusStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid status format"})
 			return
 		}
-		status = auction_entity.AuctionStatus(statusNumber)
+		status = auction_entity.AuctionStatus(statusInt)
 	}
 
 	auctions, err := u.findUseCase.FindAuctions(

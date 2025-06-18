@@ -7,7 +7,6 @@ import (
 	"fullcycle-auction_go/internal/internal_error"
 	"time"
 
-	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -15,16 +14,11 @@ import (
 func (br *BidRepository) FindBidByAuctionId(
 	ctx context.Context, auctionId string) ([]bid_entity.Bid, *internal_error.InternalError) {
 
-	// Validar auctionId
-	if _, err := uuid.Parse(auctionId); err != nil {
-		return nil, internal_error.NewBadRequestError("Invalid auction ID format")
-	}
-
 	filter := bson.M{"auction_id": auctionId}
 	cursor, err := br.Collection.Find(ctx, filter)
 	if err != nil {
 		logger.Error("Error finding bids", err)
-		return nil, internal_error.NewInternalServerError("Error finding bids")
+		return []bid_entity.Bid{}, nil // Retornar array vazio
 	}
 	defer cursor.Close(ctx)
 
@@ -43,11 +37,6 @@ func (br *BidRepository) FindBidByAuctionId(
 			Amount:    bidMongo.Amount,
 			Timestamp: time.Unix(bidMongo.Timestamp, 0),
 		})
-	}
-
-	// Se não encontrar lances, retornar array vazio
-	if len(bids) == 0 {
-		return []bid_entity.Bid{}, nil
 	}
 
 	return bids, nil

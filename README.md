@@ -73,6 +73,7 @@ cd labs-auction-goexpert
 
 ```bash
 docker compose up -d --build
+docker compose up
 ```
 
 Este comando irá:
@@ -127,9 +128,259 @@ Esse script irá testar:
 | GET    | `/bid/:auctionId`           | Busca lances por leilão              |
 | GET    | `/user/:userId`             | Busca usuário por ID                 |
 
-## 🧯 Possíveis Erros e Soluções
+## ⏱️ Configuração do Tempo do Leilão
 
-### 1. Erro ao construir imagem Docker
+O tempo de duração de um leilão pode ser definido pela variável de ambiente `AUCTION_DURATION`.
+
+1. **Edite o arquivo `.env`:**
+
+Formatos válidos para a variável`AUCTION_DURATION`:
+
+- `30s`: 30 segundos (ideal para testes)
+- `5m`: 5 minutos (configuração intermediária)
+- `24h`: 24 horas (modo produção)
+
+2. **Reconstrua os containers:**
+
+```bash
+docker compose down --volumes
+docker compose up -d --build
+```
+
+---
+
+## 📡 Base URL
+
+Todos os exemplos abaixo utilizam a base URL:
+
+```
+http://localhost:8080
+```
+
+---
+
+## 📚 Endpoints da API
+
+### 1. Health Check
+
+Verifica se a API está ativa.
+
+- **GET** `/health`
+
+#### Exemplo curl:
+
+```bash
+curl -X GET http://localhost:8080/health
+```
+
+#### Resposta:
+
+```json
+{ "status": "ok" }
+```
+
+---
+
+### 2. Criar Leilão
+
+- **POST** `/auction`
+
+#### Payload:
+
+```json
+{
+  "product_name": "iPhone 13 Pro",
+  "category": "Eletrônicos",
+  "description": "Novo na caixa, selado",
+  "condition": "new"
+}
+```
+
+Condições válidas: `new`, `used`, `refurbished`
+
+#### Exemplo curl:
+
+```bash
+curl -X POST http://localhost:8080/auction \
+  -H "Content-Type: application/json" \
+  -d '{
+    "product_name": "iPhone 13 Pro",
+    "category": "Eletrônicos",
+    "description": "Novo na caixa, selado",
+    "condition": "new"
+  }'
+```
+
+#### Resposta:
+
+```json
+{
+  "Id": "...",
+  "ProductName": "...",
+  "Category": "...",
+  "Description": "...",
+  "Condition": 1,
+  "Status": 0,
+  "Timestamp": "..."
+}
+```
+
+---
+
+### 3. Listar Leilões
+
+- **GET** `/auction`
+
+Parâmetros opcionais:
+- `status`: 0 (ativos), 1 (finalizados)
+- `category`
+- `productName` (busca parcial)
+
+#### Exemplo curl:
+
+```bash
+curl "http://localhost:8080/auction?status=0&category=Eletrônicos&productName=iPhone"
+```
+
+#### Resposta:
+
+```json
+[
+  {
+    "Id": "...",
+    "ProductName": "...",
+    "Category": "...",
+    "Description": "...",
+    "Condition": 1,
+    "Status": 0,
+    "Timestamp": "..."
+  }
+]
+```
+
+---
+
+### 4. Buscar Leilão por ID
+
+- **GET** `/auction/:auctionId`
+
+#### Exemplo curl:
+
+```bash
+curl http://localhost:8080/auction/acde3b18-3328-4c00-966d-9571e604640b
+```
+
+---
+
+### 5. Buscar Vencedor do Leilão
+
+- **GET** `/auction/winner/:auctionId`
+
+#### Exemplo curl:
+
+```bash
+curl http://localhost:8080/auction/winner/acde3b18-3328-4c00-966d-9571e604640b
+```
+
+#### Resposta:
+
+```json
+{
+  "Auction": { ... },
+  "Bid": { ... }
+}
+```
+
+---
+
+### 6. Criar Lance
+
+- **POST** `/bid`
+
+#### Payload:
+
+```json
+{
+  "user_id": "uuid-do-usuario",
+  "auction_id": "uuid-do-leilao",
+  "amount": 3500.00
+}
+```
+
+#### Exemplo curl:
+
+```bash
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "e2042afe-9664-4967-8132-1a26430c6219",
+    "auction_id": "acde3b18-3328-4c00-966d-9571e604640b",
+    "amount": 3500.00
+  }'
+```
+
+---
+
+### 7. Buscar Lances por Leilão
+
+- **GET** `/bid/:auctionId`
+
+#### Exemplo curl:
+
+```bash
+curl http://localhost:8080/bid/acde3b18-3328-4c00-966d-9571e604640b
+```
+
+---
+
+### 8. Buscar Usuário por ID
+
+- **GET** `/user/:userId`
+
+#### Exemplo curl:
+
+```bash
+curl http://localhost:8080/user/e2042afe-9664-4967-8132-1a26430c6219
+```
+
+---
+
+## 🛠️ Solução de Problemas
+
+### Leilão não fecha automaticamente?
+
+- Verifique logs:
+
+```bash
+docker compose logs app | grep "auction_closer"
+```
+
+- Confirme a variável:
+
+```bash
+docker compose exec app env | grep AUCTION_DURATION
+```
+
+- Verifique no MongoDB:
+
+```bash
+docker compose exec mongodb mongosh -u admin -p admin \
+  --eval "db.auctions.find({}, {end_time:1, status:1, product_name:1})" auctions
+```
+
+---
+
+### MongoDB não inicializa?
+
+```bash
+docker compose logs mongodb
+docker compose exec mongodb mongosh -u admin -p admin \
+  --eval "$(cat mongo-init.js)" auctions
+```
+
+---
+
+### Erro ao construir imagem Docker
 
 ```bash
 ERROR: failed to solve: process "/bin/sh -c ..." did not complete successfully
@@ -143,7 +394,7 @@ docker compose build --no-cache
 docker compose up -d
 ```
 
-### 2. Conexão recusada na porta 8080
+### Conexão recusada na porta 8080
 
 ```bash
 curl: (7) Failed to connect to localhost port 8080
@@ -156,7 +407,7 @@ docker compose ps
 docker compose logs app
 ```
 
-### 3. Erro ao conectar ao MongoDB
+### Erro ao conectar ao MongoDB
 
 ```text
 Failed to connect to MongoDB: ...
@@ -169,7 +420,7 @@ docker compose ps
 docker compose logs mongodb
 ```
 
-### 4. Erros 400/404 durante testes
+### Erros 400/404 durante testes
 
 Verifique:
 
@@ -177,32 +428,6 @@ Verifique:
 docker compose logs -f app
 ```
 
-Variáveis de ambiente:
+## 🧾 Licença
 
-- `MONGODB_URL`
-- `AUCTION_DURATION`
-
-### 5. Script falha na criação do leilão
-
-```bash
-curl -X POST http://localhost:8080/auction   -H "Content-Type: application/json"   -d '{ "product_name": "iPhone 13 Pro", "category": "Eletrônicos", "description": "Novo na caixa, selado", "condition": "new" }'
-```
-
-## ⚙️ Configuração Avançada
-
-### Variáveis de Ambiente (`.env`)
-
-```env
-MONGODB_URL=mongodb://admin:admin@mongodb:27017/auctions?authSource=admin
-AUCTION_DURATION=30s
-```
-
-### Exemplos de `AUCTION_DURATION`:
-
-- `30s` - 30 segundos (teste)
-- `5m` - 5 minutos
-- `24h` - 24 horas (produção)
-
-## 📜 Licença
-
-Este projeto está sob a licença MIT. Consulte o arquivo `LICENSE` para mais detalhes.
+Este projeto está sob a licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
