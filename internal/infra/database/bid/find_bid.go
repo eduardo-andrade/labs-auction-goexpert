@@ -18,7 +18,7 @@ func (br *BidRepository) FindBidByAuctionId(
 	cursor, err := br.Collection.Find(ctx, filter)
 	if err != nil {
 		logger.Error("Error finding bids", err)
-		return []bid_entity.Bid{}, nil // Retornar array vazio
+		return []bid_entity.Bid{}, nil
 	}
 	defer cursor.Close(ctx)
 

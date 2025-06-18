@@ -71,7 +71,6 @@ func initDependencies(database *mongo.Database) (
 	bidRepository := bid.NewBidRepository(database, auctionRepository)
 	userRepository := user.NewUserRepository(database)
 
-	// Criação separada dos use cases
 	auctionCreateUseCase := auction_usecase.NewAuctionUseCase(auctionRepository, bidRepository)
 	auctionFindUseCase := auction_usecase.NewAuctionFindUseCase(auctionRepository, bidRepository)
 

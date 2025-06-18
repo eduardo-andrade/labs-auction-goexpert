@@ -35,7 +35,6 @@ type AuctionRepository struct {
 func (ar *AuctionRepository) FindAuctionById(
 	ctx context.Context, id string) (*auction_entity.Auction, *internal_error.InternalError) {
 
-	// Adicionar validação de ID
 	if _, err := uuid.Parse(id); err != nil {
 		return nil, internal_error.NewBadRequestError("Invalid auction ID format")
 	}
@@ -87,7 +86,7 @@ func (ar *AuctionRepository) CreateAuction(
 		Condition:   auctionEntity.Condition,
 		Status:      auctionEntity.Status,
 		Timestamp:   auctionEntity.Timestamp.Unix(),
-		EndTime:     endTime, // Garantir que está sendo salvo
+		EndTime:     endTime,
 	}
 
 	_, err := ar.Collection.InsertOne(ctx, auctionEntityMongo)

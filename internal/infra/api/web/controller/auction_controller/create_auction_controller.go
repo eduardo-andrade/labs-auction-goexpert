@@ -43,7 +43,6 @@ func (u *AuctionController) CreateAuction(c *gin.Context) {
 		return
 	}
 
-	// Converter string para ProductCondition
 	var condition auction_entity.ProductCondition
 	switch strings.ToLower(request.Condition) {
 	case "new":

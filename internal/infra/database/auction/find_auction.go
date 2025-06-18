@@ -35,14 +35,14 @@ func (ar *AuctionRepository) FindAuctions(
 	cursor, err := ar.Collection.Find(ctx, filter)
 	if err != nil {
 		logger.Error("Error finding auctions", err)
-		return result, nil // Retornar array vazio
+		return result, nil
 	}
 	defer cursor.Close(ctx)
 
 	var auctionsMongo []AuctionEntityMongo
 	if err := cursor.All(ctx, &auctionsMongo); err != nil {
 		logger.Error("Error decoding auctions", err)
-		return result, nil // Retornar array vazio
+		return result, nil
 	}
 
 	for _, value := range auctionsMongo {
