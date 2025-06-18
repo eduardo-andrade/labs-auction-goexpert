@@ -18,19 +18,38 @@ import (
 )
 
 func TestAuctionAutoClose(t *testing.T) {
+	// 1. Configurar ambiente de teste seguro
+	testDBName := "test_auction_auto_close_" + time.Now().Format("20060102150405")
 	os.Setenv("AUCTION_DURATION", "2s")
 	defer os.Unsetenv("AUCTION_DURATION")
 
-	// Configurar MongoDB de teste
-	ctx := context.Background()
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI("mongodb://localhost:27017"))
-	assert.NoError(t, err)
-	defer client.Disconnect(ctx)
+	// 2. Configurar conexão com autenticação
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	database := client.Database("test_auction_auto_close")
+	// Use suas credenciais reais aqui!
+	credential := options.Credential{
+		Username: "admin",
+		Password: "admin",
+	}
+
+	client, err := mongo.Connect(ctx, options.Client().
+		ApplyURI("mongodb://localhost:27017").
+		SetAuth(credential))
+
+	assert.NoError(t, err)
+	defer func() {
+		if err = client.Disconnect(ctx); err != nil {
+			t.Logf("Disconnect error: %v", err)
+		}
+	}()
+
+	database := client.Database(testDBName)
+	defer database.Drop(ctx) // Garante limpeza após o teste
+
 	repo := auction.NewAuctionRepository(database)
 
-	// Criar leilão de teste
+	// 3. Criar leilão de teste
 	auctionEntity, internalErr := auction_entity.CreateAuction(
 		"Product Test",
 		"Category",
@@ -39,61 +58,48 @@ func TestAuctionAutoClose(t *testing.T) {
 	)
 	assert.Nil(t, internalErr)
 
-	// Inserir leilão
+	// 4. Inserir leilão
 	internalErr = repo.CreateAuction(ctx, auctionEntity)
 	assert.Nil(t, internalErr)
 
-	// Verificar que o leilão está ativo inicialmente
+	// 5. Verificar estado inicial
 	var auctionDB auction.AuctionEntityMongo
 	err = repo.Collection.FindOne(ctx, bson.M{"_id": auctionEntity.Id}).Decode(&auctionDB)
 	assert.NoError(t, err)
 	assert.Equal(t, auction_entity.Active, auctionDB.Status)
 
-	logger.Info("Auction created",
-		zap.String("id", auctionEntity.Id),
-		zap.Int64("end_time", auctionDB.EndTime))
+	// 6. Aguardar expiração com margem de segurança
+	logger.Info("Waiting for auction to expire...")
+	time.Sleep(3 * time.Second) // AUCTION_DURATION (2s) + 1s buffer
 
-	// Aguardar tempo de expiração + buffer
-	time.Sleep(3 * time.Second)
-
-	// Executar o fechamento de leilões expirados
+	// 7. Executar fechamento
 	repo.CloseExpiredAuctions(ctx)
 
-	// Verificar com retry se o leilão foi fechado
-	startTime := time.Now()
-	timeout := 5 * time.Second
-	closed := false
+	// 8. Verificar com retry otimizado
+	const maxAttempts = 5
+	const retryInterval = 500 * time.Millisecond
 
-	for time.Since(startTime) < timeout {
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		err = repo.Collection.FindOne(ctx, bson.M{"_id": auctionEntity.Id}).Decode(&auctionDB)
-		if err != nil {
-			logger.Error("Error finding auction", err)
-			break
-		}
+		assert.NoError(t, err)
 
 		if auctionDB.Status == auction_entity.Completed {
-			closed = true
 			break
 		}
 
-		logger.Info("Auction not closed yet",
-			zap.String("status", fmt.Sprintf("%d", auctionDB.Status)),
-			zap.Int64("current_time", time.Now().Unix()),
-			zap.Int64("end_time", auctionDB.EndTime))
+		if attempt < maxAttempts {
+			logger.Info(fmt.Sprintf("Retry %d/%d - Auction not closed yet", attempt, maxAttempts),
+				zap.String("status", fmt.Sprintf("%d", auctionDB.Status)),
+				zap.Int64("end_time", auctionDB.EndTime))
 
-		// Executar novamente o fechamento
-		repo.CloseExpiredAuctions(ctx)
-		time.Sleep(500 * time.Millisecond)
+			time.Sleep(retryInterval)
+			repo.CloseExpiredAuctions(ctx) // Executar novamente
+		}
 	}
 
-	// Verificações finais
-	assert.NoError(t, err, "Should find auction without error")
-	assert.True(t, closed, "Auction should be closed (status Completed)")
-	if closed {
-		assert.Equal(t, auction_entity.Completed, auctionDB.Status)
-	} else {
-		t.Fatalf("Auction not closed after %v: %+v", timeout, auctionDB)
-	}
+	// 9. Verificações finais
+	assert.Equal(t, auction_entity.Completed, auctionDB.Status,
+		"Auction should be closed with Completed status")
 
 	// Limpar banco de dados de teste
 	database.Collection("auctions").Drop(ctx)
